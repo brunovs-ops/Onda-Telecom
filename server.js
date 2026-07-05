@@ -14,7 +14,7 @@ import { z } from "zod";
 // (em memoria - suficiente para a demo; em producao seria PostgreSQL/CRM)
 // ------------------------------------------------------------
 const CLIENTES = {
-  "11144477735": {
+  "46556072893": {
     nome: "Mariana Souza",
     plano: "Onda Controle 15GB",
     statusLinha: "ativa",
@@ -339,7 +339,7 @@ app.get("/mcp", (_req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Onda Telecom MCP server rodando na porta ${PORT}`);
   console.log(API_KEY ? "Autenticacao: header x-api-key ATIVA" : "Autenticacao: NENHUMA (servidor publico)");
