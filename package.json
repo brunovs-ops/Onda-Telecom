@@ -1,7 +1,7 @@
 {
   "name": "onda-telecom-mcp",
-  "version": "1.0.0",
-  "description": "Servidor MCP ficticio da Onda Telecom para agente de suporte na Moveo.ai",
+  "version": "2.0.0",
+  "description": "Servidor MCP Onda Telecom v2 - com PostgreSQL no Railway",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "express": "^4.19.2",
+    "pg": "^8.13.1",
     "zod": "^3.23.8"
   }
 }
