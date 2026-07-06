@@ -113,6 +113,7 @@ NAO USAR: para segunda via use gerar_segunda_via. Para status detalhado de chama
       },
     },
     async ({ cpf }) => {
+      console.log(`[TOOL] consultar_cliente | cpf=${cpf}`);
       try {
         const c = await buscarCliente(cpf);
         if (!c) return txt(ERRO_CPF_NAO_ENCONTRADO, true);
@@ -179,6 +180,7 @@ RETORNA: dados de pagamento. Se fatura ja estiver paga, informa. Se for pre-pago
       },
     },
     async ({ cpf }) => {
+      console.log(`[TOOL] gerar_segunda_via | cpf=${cpf}`);
       try {
         const c = await buscarCliente(cpf);
         if (!c) return txt(ERRO_CPF_NAO_ENCONTRADO, true);
@@ -229,6 +231,7 @@ NAO USAR: para ver TODOS os chamados use listar_historico_chamados. Para abrir n
       },
     },
     async ({ cpf }) => {
+      console.log(`[TOOL] consultar_protocolo | cpf=${cpf}`);
       try {
         const c = await buscarCliente(cpf);
         if (!c) return txt(ERRO_CPF_NAO_ENCONTRADO, true);
@@ -283,6 +286,7 @@ RETORNA: numero do protocolo criado e confirmacao do agendamento.`,
       },
     },
     async ({ cpf, assunto, data_agendada, periodo, endereco_atendimento }) => {
+      console.log(`[TOOL] >>> abrir_chamado (ESCRITA) | cpf=${cpf} | assunto="${assunto}" | data=${data_agendada} ${periodo}`);
       try {
         const c = await buscarCliente(cpf);
         if (!c) return txt(ERRO_CPF_NAO_ENCONTRADO, true);
@@ -292,6 +296,7 @@ RETORNA: numero do protocolo criado e confirmacao do agendamento.`,
            VALUES ($1, $2, $3, 'aberto', $4, $5, $6)`,
           [numero, normalizarCpf(cpf), assunto, data_agendada, periodo, endereco_atendimento]
         );
+        console.log(`[TOOL] <<< abrir_chamado OK | protocolo criado: ${numero}`);
         return txt(
           [
             `Chamado aberto com sucesso para ${c.nome}!`,
@@ -327,6 +332,7 @@ NAO USAR: para so o ultimo chamado use consultar_protocolo.`,
       },
     },
     async ({ cpf }) => {
+      console.log(`[TOOL] listar_historico_chamados | cpf=${cpf}`);
       try {
         const c = await buscarCliente(cpf);
         if (!c) return txt(ERRO_CPF_NAO_ENCONTRADO, true);
@@ -366,15 +372,26 @@ NAO PODE cancelar chamados ja concluidos.`,
       },
     },
     async ({ numero_protocolo }) => {
+      console.log(`[TOOL] >>> cancelar_chamado (ESCRITA) | protocolo=${numero_protocolo}`);
       try {
         const p = await buscarChamado(numero_protocolo);
-        if (!p) return txt(`Protocolo ${numero_protocolo} nao encontrado. Confirme o numero.`, true);
-        if (p.status === "concluido") return txt(`O chamado ${p.numero} ja esta concluido e nao pode ser cancelado.`, true);
-        if (p.status === "cancelado") return txt(`O chamado ${p.numero} ja estava cancelado.`);
+        if (!p) {
+          console.log(`[TOOL] <<< cancelar_chamado ERRO: protocolo ${numero_protocolo} nao encontrado`);
+          return txt(`Protocolo ${numero_protocolo} nao encontrado. Confirme o numero.`, true);
+        }
+        if (p.status === "concluido") {
+          console.log(`[TOOL] <<< cancelar_chamado ERRO: ${p.numero} ja concluido`);
+          return txt(`O chamado ${p.numero} ja esta concluido e nao pode ser cancelado.`, true);
+        }
+        if (p.status === "cancelado") {
+          console.log(`[TOOL] <<< cancelar_chamado: ${p.numero} ja estava cancelado`);
+          return txt(`O chamado ${p.numero} ja estava cancelado.`);
+        }
         await pool.query("UPDATE chamados SET status = 'cancelado' WHERE numero = $1", [p.numero]);
+        console.log(`[TOOL] <<< cancelar_chamado OK | ${p.numero} agora esta CANCELADO no banco`);
         return txt(`Chamado ${p.numero} (${p.assunto}) cancelado com sucesso. Confirme o cancelamento com o cliente.`);
       } catch (err) {
-        console.error(err);
+        console.error("[TOOL] cancelar_chamado ERRO:", err);
         return txt("Erro ao cancelar chamado.", true);
       }
     }
@@ -402,6 +419,7 @@ NAO PODE reagendar chamados concluidos ou cancelados.`,
       },
     },
     async ({ numero_protocolo, nova_data, novo_periodo }) => {
+      console.log(`[TOOL] >>> reagendar_chamado (ESCRITA) | protocolo=${numero_protocolo} | nova_data=${nova_data} ${novo_periodo}`);
       try {
         const p = await buscarChamado(numero_protocolo);
         if (!p) return txt(`Protocolo ${numero_protocolo} nao encontrado.`, true);
@@ -411,6 +429,7 @@ NAO PODE reagendar chamados concluidos ou cancelados.`,
           "UPDATE chamados SET data_agendada = $1, periodo = $2 WHERE numero = $3",
           [nova_data, novo_periodo, p.numero]
         );
+        console.log(`[TOOL] <<< reagendar_chamado OK | ${p.numero} reagendado no banco`);
         return txt(
           `Chamado ${p.numero} reagendado com sucesso para ${nova_data} (${novo_periodo.replace("_", " ")}). Confirme com o cliente.`
         );
@@ -438,6 +457,7 @@ RETORNA: cidade e tecnologias disponiveis. Se nao coberto, informa.`,
       },
     },
     async ({ cep }) => {
+      console.log(`[TOOL] consultar_cobertura | cep=${cep}`);
       try {
         const cepFmt = normalizarCep(cep);
         const { rows } = await pool.query("SELECT * FROM cobertura_cep WHERE cep = $1", [cepFmt]);
