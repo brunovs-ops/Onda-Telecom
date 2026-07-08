@@ -670,11 +670,14 @@ app.post("/webhook/pos-mensagem", express.raw({ type: "*/*" }), async (req, res)
       if (!ok) console.warn("[webhook auditoria] assinatura nao conferiu (registrando mesmo assim)");
     }
 
+    console.log("[auditoria] etapa 1: corpo recebido, tamanho =", Buffer.byteLength(rawBody), "bytes");
+
     let body;
     try {
       body = JSON.parse(rawBody);
-    } catch {
-      // Corpo de teste do painel: nao quebra, so ignora.
+      console.log("[auditoria] etapa 2: JSON parseado com sucesso");
+    } catch (e) {
+      console.warn("[auditoria] etapa 2 FALHOU: corpo nao e JSON. Conteudo bruto:", rawBody);
       return res.json({ context: {} });
     }
 
