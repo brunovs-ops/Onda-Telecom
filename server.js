@@ -522,26 +522,38 @@ app.get("/", (_req, res) => {
   res.send("Onda Telecom MCP v2 (com PostgreSQL) - OK. Endpoint MCP: POST /mcp");
 });
 
-// ---- Rota do webhook Moveo (MODO DIAGNOSTICO - nao bloqueia, so loga) ----
+// ---- Rota do webhook Moveo (first-message) ----
 app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
   try {
-    const rawBody = req.body.toString("utf-8");
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
     const signature = req.headers["x-moveo-signature"];
 
-    // ---- DIAGNOSTICO: mostra o que chegou e o que foi calculado ----
-    const calculada = MOVEO_WEBHOOK_TOKEN
-      ? crypto.createHmac("sha256", MOVEO_WEBHOOK_TOKEN).update(rawBody).digest("hex")
-      : "(sem token no ambiente)";
-    console.log("=== DIAGNOSTICO WEBHOOK MOVEO ===");
-    console.log("Token carregado no ambiente? ", MOVEO_WEBHOOK_TOKEN ? "SIM" : "NAO");
-    console.log("Assinatura recebida do Moveo: ", signature);
-    console.log("Assinatura calculada aqui:    ", calculada);
-    console.log("Bateram? ", signature === calculada);
-    console.log("Tamanho do corpo (bytes): ", Buffer.byteLength(rawBody));
-    console.log("=================================");
-    // ---- FIM DO DIAGNOSTICO (nao estamos bloqueando por enquanto) ----
+    // Valida a assinatura (se o token estiver configurado no ambiente)
+    if (MOVEO_WEBHOOK_TOKEN) {
+      const ok =
+        typeof signature === "string" &&
+        verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN);
+      if (!ok) {
+        console.warn("[webhook] assinatura invalida ou ausente");
+        return res.status(401).json({ error: "invalid signature" });
+      }
+    }
 
-    const body = JSON.parse(rawBody);
+    // Tenta ler o corpo como JSON. Se nao for JSON valido (ex.: corpo de teste
+    // do painel do Moveo), responde 200 com uma instrucao neutra em vez de quebrar.
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      console.warn("[webhook] corpo nao e JSON valido (provavel teste do painel). Corpo:", rawBody);
+      return res.json({
+        context: {
+          live_instructions:
+            "Cliente ainda nao identificado. Peca o CPF de forma cordial para localizar o cadastro.",
+        },
+      });
+    }
+
     const cpf = body?.context?.customer_id;
 
     if (!cpf) {
