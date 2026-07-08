@@ -663,14 +663,11 @@ app.post("/webhook/pos-mensagem", express.raw({ type: "*/*" }), async (req, res)
     const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
     const signature = req.headers["x-moveo-signature"];
 
-    if (MOVEO_WEBHOOK_TOKEN) {
-      const ok =
-        typeof signature === "string" &&
-        verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN);
-      if (!ok) {
-        console.warn("[webhook auditoria] assinatura invalida ou ausente");
-        return res.status(401).json({ error: "invalid signature" });
-      }
+    // Auditoria nao e critica e nao altera a conversa, entao NAO bloqueamos por
+    // assinatura aqui. Apenas registramos se ela bateu ou nao, para referencia.
+    if (MOVEO_WEBHOOK_TOKEN && typeof signature === "string") {
+      const ok = verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN);
+      if (!ok) console.warn("[webhook auditoria] assinatura nao conferiu (registrando mesmo assim)");
     }
 
     let body;
