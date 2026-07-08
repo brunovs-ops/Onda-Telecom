@@ -1,12 +1,14 @@
 // ============================================================
 // Servidor MCP - Onda Telecom v2 (com PostgreSQL / Railway)
 // 8 tools: consulta, pagamento, protocolo, cobertura, agenda
+// + Webhook Moveo (first-message)
 // ============================================================
 
 import express from "express";
 import pg from "pg";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -485,6 +487,30 @@ RETORNA: cidade e tecnologias disponiveis. Se nao coberto, informa.`,
 }
 
 // ------------------------------------------------------------
+// WEBHOOK MOVEO - primeira mensagem (first-message)
+// ------------------------------------------------------------
+const MOVEO_WEBHOOK_TOKEN = process.env.MOVEO_WEBHOOK_TOKEN;
+
+function verifyMoveoSignature(rawBody, signature, token) {
+  const expected = crypto.createHmac("sha256", token).update(rawBody).digest("hex");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(signature, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function buildLiveInstructions(c) {
+  const linhas = [
+    `1. Nome do cliente: ${c.nome}`,
+    `2. Plano atual: ${c.plano}`,
+    `3. Status da linha: ${c.status_linha}`,
+  ];
+  if (c.fatura_valor) {
+    linhas.push(`4. Fatura: ${c.fatura_valor}, venc. ${c.fatura_vencimento}, status ${c.fatura_status}`);
+  }
+  return linhas.join("\n");
+}
+
+// ------------------------------------------------------------
 // SERVIDOR HTTP
 // ------------------------------------------------------------
 const app = express();
@@ -494,6 +520,52 @@ const API_KEY = process.env.MCP_API_KEY;
 
 app.get("/", (_req, res) => {
   res.send("Onda Telecom MCP v2 (com PostgreSQL) - OK. Endpoint MCP: POST /mcp");
+});
+
+// ---- Rota do webhook Moveo (usa express.raw para validar assinatura) ----
+app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
+  try {
+    const rawBody = req.body.toString("utf-8");
+    const signature = req.headers["x-moveo-signature"];
+
+    if (
+      MOVEO_WEBHOOK_TOKEN &&
+      (typeof signature !== "string" ||
+        !verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN))
+    ) {
+      return res.status(401).json({ error: "invalid signature" });
+    }
+
+    const body = JSON.parse(rawBody);
+    const cpf = body?.context?.customer_id;
+
+    if (!cpf) {
+      return res.json({
+        context: {
+          live_instructions:
+            "Cliente ainda nao identificado. Peca o CPF de forma cordial para localizar o cadastro antes de prosseguir.",
+        },
+      });
+    }
+
+    const cliente = await buscarCliente(cpf);
+
+    if (!cliente) {
+      return res.json({
+        context: {
+          live_instructions:
+            "CPF informado nao foi localizado na base. Peca ao cliente para confirmar os numeros do CPF.",
+        },
+      });
+    }
+
+    return res.json({
+      context: { live_instructions: buildLiveInstructions(cliente) },
+    });
+  } catch (err) {
+    console.error("Erro no webhook primeira-mensagem:", err.message);
+    return res.status(500).json({ error: "internal error" });
+  }
 });
 
 app.post("/mcp", async (req, res) => {
