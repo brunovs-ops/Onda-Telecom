@@ -514,6 +514,17 @@ function buildLiveInstructions(c) {
 // SERVIDOR HTTP
 // ------------------------------------------------------------
 const app = express();
+
+// Le o corpo cru da requisicao manualmente (contorna o express.json global).
+function lerCorpoBruto(req) {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (chunk) => { data += chunk; });
+    req.on("end", () => resolve(data));
+    req.on("error", () => resolve(""));
+  });
+}
+
 app.use(express.json());
 
 const API_KEY = process.env.MCP_API_KEY;
@@ -523,9 +534,9 @@ app.get("/", (_req, res) => {
 });
 
 // ---- Rota do webhook Moveo (first-message) ----
-app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
+app.post("/webhook/primeira-mensagem", async (req, res) => {
   try {
-    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+    const rawBody = await lerCorpoBruto(req);
     const signature = req.headers["x-moveo-signature"];
 
     // Valida a assinatura (se o token estiver configurado no ambiente)
@@ -588,9 +599,9 @@ app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req,
 // ---- Rota do webhook Moveo (dialogo) ----
 // Usada DENTRO de um no do fluxo, DEPOIS que o Teo ja coletou o CPF.
 // Recebe o CPF no context, busca o cliente e devolve live_instructions + confirmacao.
-app.post("/webhook/dialogo", express.raw({ type: "*/*" }), async (req, res) => {
+app.post("/webhook/dialogo", async (req, res) => {
   try {
-    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+    const rawBody = await lerCorpoBruto(req);
     const signature = req.headers["x-moveo-signature"];
 
     if (MOVEO_WEBHOOK_TOKEN) {
@@ -658,9 +669,9 @@ app.post("/webhook/dialogo", express.raw({ type: "*/*" }), async (req, res) => {
 // ---- Rota do webhook Moveo (pos-mensagem / auditoria) ----
 // Dispara DEPOIS que o Teo prepara a resposta. So registra, nao altera a conversa.
 // Grava cada interacao na tabela 'auditoria'.
-app.post("/webhook/pos-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
+app.post("/webhook/pos-mensagem", async (req, res) => {
   try {
-    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+    const rawBody = await lerCorpoBruto(req);
     const signature = req.headers["x-moveo-signature"];
 
     // Auditoria nao e critica e nao altera a conversa, entao NAO bloqueamos por
