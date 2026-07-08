@@ -585,6 +585,76 @@ app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req,
   }
 });
 
+// ---- Rota do webhook Moveo (dialogo) ----
+// Usada DENTRO de um no do fluxo, DEPOIS que o Teo ja coletou o CPF.
+// Recebe o CPF no context, busca o cliente e devolve live_instructions + confirmacao.
+app.post("/webhook/dialogo", express.raw({ type: "*/*" }), async (req, res) => {
+  try {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+    const signature = req.headers["x-moveo-signature"];
+
+    if (MOVEO_WEBHOOK_TOKEN) {
+      const ok =
+        typeof signature === "string" &&
+        verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN);
+      if (!ok) {
+        console.warn("[webhook dialogo] assinatura invalida ou ausente");
+        return res.status(401).json({ error: "invalid signature" });
+      }
+    }
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      console.warn("[webhook dialogo] corpo nao e JSON valido. Corpo:", rawBody);
+      return res.json({ context: { cliente_encontrado: false } });
+    }
+
+    // O nome da variavel do CPF depende de como voce nomeou no fluxo do Moveo.
+    // Tento os nomes mais provaveis, nesta ordem.
+    const cpf =
+      body?.context?.cpf ||
+      body?.context?.customer_id ||
+      body?.context?.cpf_cliente;
+
+    if (!cpf) {
+      return res.json({
+        context: {
+          cliente_encontrado: false,
+          live_instructions:
+            "CPF nao informado. Peca o CPF ao cliente antes de prosseguir.",
+        },
+      });
+    }
+
+    const cliente = await buscarCliente(cpf);
+
+    if (!cliente) {
+      return res.json({
+        context: {
+          cliente_encontrado: false,
+          live_instructions:
+            "CPF informado nao foi localizado. Peca ao cliente para confirmar os numeros do CPF.",
+        },
+      });
+    }
+
+    // Cliente encontrado: devolve os dados para a conversa.
+    return res.json({
+      context: {
+        cliente_encontrado: true,
+        nome_cliente: cliente.nome,
+        plano_cliente: cliente.plano,
+        live_instructions: buildLiveInstructions(cliente),
+      },
+    });
+  } catch (err) {
+    console.error("Erro no webhook dialogo:", err.message);
+    return res.status(500).json({ error: "internal error" });
+  }
+});
+
 app.post("/mcp", async (req, res) => {
   if (API_KEY && req.headers["x-api-key"] !== API_KEY) {
     return res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });
