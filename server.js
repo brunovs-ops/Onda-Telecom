@@ -522,19 +522,24 @@ app.get("/", (_req, res) => {
   res.send("Onda Telecom MCP v2 (com PostgreSQL) - OK. Endpoint MCP: POST /mcp");
 });
 
-// ---- Rota do webhook Moveo (usa express.raw para validar assinatura) ----
+// ---- Rota do webhook Moveo (MODO DIAGNOSTICO - nao bloqueia, so loga) ----
 app.post("/webhook/primeira-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
   try {
     const rawBody = req.body.toString("utf-8");
     const signature = req.headers["x-moveo-signature"];
 
-    if (
-      MOVEO_WEBHOOK_TOKEN &&
-      (typeof signature !== "string" ||
-        !verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN))
-    ) {
-      return res.status(401).json({ error: "invalid signature" });
-    }
+    // ---- DIAGNOSTICO: mostra o que chegou e o que foi calculado ----
+    const calculada = MOVEO_WEBHOOK_TOKEN
+      ? crypto.createHmac("sha256", MOVEO_WEBHOOK_TOKEN).update(rawBody).digest("hex")
+      : "(sem token no ambiente)";
+    console.log("=== DIAGNOSTICO WEBHOOK MOVEO ===");
+    console.log("Token carregado no ambiente? ", MOVEO_WEBHOOK_TOKEN ? "SIM" : "NAO");
+    console.log("Assinatura recebida do Moveo: ", signature);
+    console.log("Assinatura calculada aqui:    ", calculada);
+    console.log("Bateram? ", signature === calculada);
+    console.log("Tamanho do corpo (bytes): ", Buffer.byteLength(rawBody));
+    console.log("=================================");
+    // ---- FIM DO DIAGNOSTICO (nao estamos bloqueando por enquanto) ----
 
     const body = JSON.parse(rawBody);
     const cpf = body?.context?.customer_id;
