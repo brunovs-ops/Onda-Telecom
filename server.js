@@ -655,6 +655,70 @@ app.post("/webhook/dialogo", express.raw({ type: "*/*" }), async (req, res) => {
   }
 });
 
+// ---- Rota do webhook Moveo (pos-mensagem / auditoria) ----
+// Dispara DEPOIS que o Teo prepara a resposta. So registra, nao altera a conversa.
+// Grava cada interacao na tabela 'auditoria'.
+app.post("/webhook/pos-mensagem", express.raw({ type: "*/*" }), async (req, res) => {
+  try {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+    const signature = req.headers["x-moveo-signature"];
+
+    if (MOVEO_WEBHOOK_TOKEN) {
+      const ok =
+        typeof signature === "string" &&
+        verifyMoveoSignature(rawBody, signature, MOVEO_WEBHOOK_TOKEN);
+      if (!ok) {
+        console.warn("[webhook auditoria] assinatura invalida ou ausente");
+        return res.status(401).json({ error: "invalid signature" });
+      }
+    }
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      // Corpo de teste do painel: nao quebra, so ignora.
+      return res.json({ context: {} });
+    }
+
+    // Extrai os campos que o Moveo envia no post-message.
+    const sessionId = body?.session_id ?? null;
+    const cpf = body?.context?.cpf ?? body?.context?.customer_id ?? null;
+    const mensagemUsuario = body?.input?.text ?? null;
+    const intencao = Array.isArray(body?.intents) && body.intents[0]
+      ? body.intents[0].intent
+      : null;
+
+    // 'output' e o que o Teo vai responder (array de acoes).
+    const output = Array.isArray(body?.output) ? body.output : [];
+    const tiposResposta = output.map((a) => a?.type).filter(Boolean).join(", ") || null;
+    // Junta os textos das respostas de tipo 'text' num so campo legivel.
+    const respostaTeo = output
+      .filter((a) => a?.type === "text" && Array.isArray(a.texts))
+      .map((a) => a.texts.join(" "))
+      .join(" | ") || null;
+
+    // Grava no banco (nao bloqueia a conversa se falhar).
+    try {
+      await pool.query(
+        `INSERT INTO auditoria (session_id, cpf, mensagem_usuario, resposta_teo, intencao, tipos_resposta)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [sessionId, cpf, mensagemUsuario, respostaTeo, intencao, tiposResposta]
+      );
+      console.log(`[auditoria] registrado | sessao=${sessionId} | intencao=${intencao}`);
+    } catch (dbErr) {
+      console.error("[auditoria] falha ao gravar:", dbErr.message);
+    }
+
+    // Post-message: retornamos context vazio = deixa a resposta do Teo passar inalterada.
+    return res.json({ context: {} });
+  } catch (err) {
+    console.error("Erro no webhook pos-mensagem:", err.message);
+    // Mesmo em erro, respondemos 200 para nao travar a conversa (auditoria nao e critica).
+    return res.json({ context: {} });
+  }
+});
+
 app.post("/mcp", async (req, res) => {
   if (API_KEY && req.headers["x-api-key"] !== API_KEY) {
     return res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });
