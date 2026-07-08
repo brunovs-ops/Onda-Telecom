@@ -696,15 +696,17 @@ app.post("/webhook/pos-mensagem", express.raw({ type: "*/*" }), async (req, res)
       .join(" | ") || null;
 
     // Grava no banco (nao bloqueia a conversa se falhar).
+    console.log("[auditoria] tentando inserir:", JSON.stringify({ sessionId, cpf, mensagemUsuario, respostaTeo, intencao, tiposResposta }));
     try {
-      await pool.query(
+      const r = await pool.query(
         `INSERT INTO auditoria (session_id, cpf, mensagem_usuario, resposta_teo, intencao, tipos_resposta)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [sessionId, cpf, mensagemUsuario, respostaTeo, intencao, tiposResposta]
       );
-      console.log(`[auditoria] registrado | sessao=${sessionId} | intencao=${intencao}`);
+      console.log(`[auditoria] REGISTRADO OK | id=${r.rows[0]?.id} | sessao=${sessionId} | intencao=${intencao}`);
     } catch (dbErr) {
-      console.error("[auditoria] falha ao gravar:", dbErr.message);
+      console.error("[auditoria] FALHA AO GRAVAR >>>", dbErr.message);
+      console.error("[auditoria] detalhe do erro:", dbErr);
     }
 
     // Post-message: retornamos context vazio = deixa a resposta do Teo passar inalterada.
